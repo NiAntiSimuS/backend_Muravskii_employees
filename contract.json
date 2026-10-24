@@ -1,10 +1,47 @@
 {
   "base_url": "http://localhost:8000",
-  "resource": "items",
+  "resource": "departments",
   "id_field": "id",
   "missing_id": "999999",
   "list_key": null,
-  "create": { "title": "Первая запись" },
-  "update": { "title": "Изменённая запись" },
-  "required_field": "title"
+  "create": {
+    "name": "Разработка",
+    "manager": "Анна Смирнова",
+    "status": "active"
+  },
+  "update": {
+    "manager": "Иван Петров"
+  },
+  "required_field": "name",
+  "errors": [
+    {
+      "body": {
+        "name": "",
+        "manager": "Анна Смирнова",
+        "status": "active"
+      },
+      "field": "name"
+    },
+    {
+      "body": {
+        "name": "Разработка",
+        "manager": "",
+        "status": "active"
+      },
+      "field": "manager"
+    },
+    {
+      "body": {
+        "name": "Разработка",
+        "manager": "Анна Смирнова",
+        "status": "wrong"
+      },
+      "field": "status"
+    }
+  ],
+  "filter": {
+    "param": "manager",
+    "value": "Анна Смирнова",
+    "other": "Другой руководитель"
+  }
 }

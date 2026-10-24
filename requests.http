@@ -1,44 +1,107 @@
-# Запросы для демонстрации. В VS Code нужно расширение REST Client, в JetBrains IDE всё встроено.
+# Запросы для демонстрации лабораторной 1.
+# В VS Code нужно расширение REST Client; в JetBrains IDE поддержка .http встроена.
 # Над каждым запросом появляется ссылка «Send Request».
-# items заменить на свой ресурс, тела на поля своей сущности.
 
 @base = http://localhost:8000
 
-### Сервис жив?
+### 1. Сервис жив? Ожидается 200 и {"status":"ok"}
 GET {{base}}/health
 
-### Создать
-POST {{base}}/api/items
+### 2. Создать отдел. Ожидается 201 и объект с id
+POST {{base}}/api/departments
 Content-Type: application/json
 
-{ "title": "Первая запись" }
+{
+  "name": "Разработка",
+  "manager": "Анна Смирнова",
+  "status": "active"
+}
 
-### Список
-GET {{base}}/api/items
-
-### Получить одну запись
-GET {{base}}/api/items/1
-
-### Изменить
-PATCH {{base}}/api/items/1
+### 3. Создать второй отдел
+POST {{base}}/api/departments
 Content-Type: application/json
 
-{ "title": "Изменённая запись" }
+{
+  "name": "Маркетинг",
+  "manager": "Иван Петров",
+  "status": "inactive"
+}
 
-### Удалить
-DELETE {{base}}/api/items/1
+### 4. Получить список. Ожидается 200
+GET {{base}}/api/departments
 
-### После удаления должен быть 404
-GET {{base}}/api/items/1
+### 5. Пагинация
+GET {{base}}/api/departments?limit=1&offset=0
 
-### Сломанный JSON, должен быть 400
-POST {{base}}/api/items
+### 6. Фильтр по руководителю
+GET {{base}}/api/departments?manager=Анна%20Смирнова
+
+### 7. Фильтр по статусу
+GET {{base}}/api/departments?status=active
+
+### 8. Получить отдел с id=1
+GET {{base}}/api/departments/1
+
+### 9. Несуществующий id. Ожидается 404
+GET {{base}}/api/departments/999999
+
+### 10. Изменить отдел. Ожидается 200
+PATCH {{base}}/api/departments/1
 Content-Type: application/json
 
-{ "title":
+{
+  "manager": "Иван Петров"
+}
 
-### Пустое обязательное поле, должен быть 400
-POST {{base}}/api/items
+### 11. Пустое обязательное поле. Ожидается 400 и field=name
+POST {{base}}/api/departments
 Content-Type: application/json
 
-{ "title": "" }
+{
+  "name": "",
+  "manager": "Анна Смирнова",
+  "status": "active"
+}
+
+### 12. Обязательное поле name отсутствует. Ожидается 400 и field=name
+POST {{base}}/api/departments
+Content-Type: application/json
+
+{
+  "manager": "Анна Смирнова",
+  "status": "active"
+}
+
+### 13. Пустой manager. Ожидается 400 и field=manager
+POST {{base}}/api/departments
+Content-Type: application/json
+
+{
+  "name": "Продажи",
+  "manager": "",
+  "status": "active"
+}
+
+### 14. Неверный status. Ожидается 400 и field=status
+POST {{base}}/api/departments
+Content-Type: application/json
+
+{
+  "name": "Продажи",
+  "manager": "Олег Орлов",
+  "status": "wrong"
+}
+
+### 15. Сломанный JSON. Ожидается 400
+POST {{base}}/api/departments
+Content-Type: application/json
+
+{
+  "name": "Продажи",
+  "manager": "Олег Орлов",
+
+### 16. Удалить отдел. Ожидается 204 без тела
+DELETE {{base}}/api/departments/1
+
+### 17. После удаления запись не существует. Ожидается 404
+GET {{base}}/api/departments/1
