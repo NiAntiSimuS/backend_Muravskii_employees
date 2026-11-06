@@ -1,52 +1,163 @@
-from threading import RLock
+"""CRUD отделов и сотрудников в SQLite. Все значения в SQL параметризованы."""
 
-from .models import Department, DepartmentCreate, DepartmentFilter, DepartmentUpdate
+import sqlite3
+
+from .database import Database
+from .models import (
+    Department,
+    DepartmentCreate,
+    DepartmentFilter,
+    DepartmentStats,
+    DepartmentUpdate,
+    Employee,
+    EmployeeCreate,
+)
+
+
+class DuplicateEmployeeEmailError(Exception):
+    """Email уже занят другим сотрудником (бизнес-правило)."""
 
 
 class DepartmentRepository:
-    """Простое потокобезопасное хранилище отделов в памяти процесса."""
-
-    def __init__(self) -> None:
-        self._items: dict[int, Department] = {}
-        self._next_id = 1
-        self._lock = RLock()
+    def __init__(self, database: Database) -> None:
+        self.database = database
 
     def create(self, data: DepartmentCreate) -> Department:
-        with self._lock:
-            department = Department(id=self._next_id, **data.model_dump())
-            self._items[department.id] = department
-            self._next_id += 1
-            return department
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO departments (name, manager, status) VALUES (?, ?, ?)",
+                (data.name, data.manager, data.status),
+            )
+            row = connection.execute(
+                "SELECT id, name, manager, status FROM departments WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+            return Department.model_validate(dict(row))
 
     def get(self, department_id: int) -> Department | None:
-        with self._lock:
-            return self._items.get(department_id)
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name, manager, status FROM departments WHERE id = ?",
+                (department_id,),
+            ).fetchone()
+            return Department.model_validate(dict(row)) if row is not None else None
 
     def find_all(self, filters: DepartmentFilter) -> list[Department]:
-        with self._lock:
-            items = sorted(self._items.values(), key=lambda item: item.id)
+        query = "SELECT id, name, manager, status FROM departments WHERE 1 = 1"
+        params: list[str | int] = []
+        if filters.manager is not None:
+            query += " AND manager = ?"
+            params.append(filters.manager)
+        if filters.q is not None:
+            query += " AND instr(unicode_casefold(name), unicode_casefold(?)) > 0"
+            params.append(filters.q)
+        if filters.status is not None:
+            query += " AND status = ?"
+            params.append(filters.status)
+        query += " ORDER BY id LIMIT ? OFFSET ?"
+        params.extend((filters.limit, filters.offset))
+        with self.database.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+            return [Department.model_validate(dict(row)) for row in rows]
 
-            if filters.manager is not None:
-                items = [item for item in items if item.manager == filters.manager]
-            if filters.status is not None:
-                items = [item for item in items if item.status == filters.status]
-
-            start = filters.offset
-            end = start + filters.limit
-            return items[start:end]
+    def stats(self) -> list[DepartmentStats]:
+        """SQL считает сотрудников и зарплаты, включая отделы без сотрудников."""
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                """SELECT
+                       d.id AS department_id,
+                       d.name AS department_name,
+                       COUNT(e.id) AS employee_count,
+                       COALESCE(SUM(e.salary), 0) AS total_salary,
+                       COALESCE(AVG(e.salary), 0) AS avg_salary
+                   FROM departments AS d
+                   LEFT JOIN employees AS e ON e.department_id = d.id
+                   GROUP BY d.id, d.name
+                   ORDER BY d.id"""
+            ).fetchall()
+            return [DepartmentStats.model_validate(dict(row)) for row in rows]
 
     def update(self, department_id: int, changes: DepartmentUpdate) -> Department | None:
-        with self._lock:
-            current = self._items.get(department_id)
-            if current is None:
-                return None
-
-            updated = Department.model_validate(
-                current.model_dump() | changes.model_dump(exclude_unset=True)
+        values = changes.model_dump(exclude_unset=True)
+        # Имена столбцов выбираются только из зафиксированного белого списка.
+        columns = [name for name in ("name", "manager", "status") if name in values]
+        assignments = ", ".join(f"{column} = ?" for column in columns)
+        params = [values[column] for column in columns]
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                f"UPDATE departments SET {assignments} WHERE id = ?",
+                (*params, department_id),
             )
-            self._items[department_id] = updated
-            return updated
+            if cursor.rowcount == 0:
+                return None
+            row = connection.execute(
+                "SELECT id, name, manager, status FROM departments WHERE id = ?",
+                (department_id,),
+            ).fetchone()
+            return Department.model_validate(dict(row))
 
     def delete(self, department_id: int) -> bool:
-        with self._lock:
-            return self._items.pop(department_id, None) is not None
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM departments WHERE id = ?", (department_id,)
+            )
+            return cursor.rowcount > 0
+
+
+class EmployeeRepository:
+    def __init__(self, database: Database) -> None:
+        self.database = database
+
+    def create(self, department_id: int, data: EmployeeCreate) -> Employee | None:
+        with self.database.connect() as connection:
+            # BEGIN IMMEDIATE блокирует параллельные записи: проверка уникальности
+            # и INSERT происходят внутри одной транзакции, без race condition.
+            connection.execute("BEGIN IMMEDIATE")
+            parent = connection.execute(
+                "SELECT 1 FROM departments WHERE id = ?", (department_id,)
+            ).fetchone()
+            if parent is None:
+                return None
+
+            # Email должен быть уникальным во всей компании, без учёта регистра.
+            # COLLATE NOCASE корректен для обычных ASCII email-адресов.
+            duplicate = connection.execute(
+                "SELECT 1 FROM employees WHERE email COLLATE NOCASE = ? LIMIT 1",
+                (data.email,),
+            ).fetchone()
+            if duplicate is not None:
+                raise DuplicateEmployeeEmailError()
+
+            try:
+                cursor = connection.execute(
+                    """INSERT INTO employees
+                       (department_id, full_name, position, email, salary)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (department_id, data.full_name, data.position, data.email, data.salary),
+                )
+            except sqlite3.IntegrityError as error:
+                # Уникальный индекс в БД — дополнительная защита при прямых SQL-записях.
+                if "UNIQUE constraint failed: employees.email" in str(error):
+                    raise DuplicateEmployeeEmailError() from error
+                raise
+
+            row = connection.execute(
+                """SELECT id, department_id, full_name, position, email, salary
+                   FROM employees WHERE id = ?""",
+                (cursor.lastrowid,),
+            ).fetchone()
+            return Employee.model_validate(dict(row))
+
+    def find_all(self, department_id: int) -> list[Employee] | None:
+        with self.database.connect() as connection:
+            parent = connection.execute(
+                "SELECT 1 FROM departments WHERE id = ?", (department_id,)
+            ).fetchone()
+            if parent is None:
+                return None
+            rows = connection.execute(
+                """SELECT id, department_id, full_name, position, email, salary
+                   FROM employees WHERE department_id = ? ORDER BY id""",
+                (department_id,),
+            ).fetchall()
+            return [Employee.model_validate(dict(row)) for row in rows]

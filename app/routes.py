@@ -6,22 +6,32 @@ from .models import (
     Department,
     DepartmentCreate,
     DepartmentFilter,
+    DepartmentStats,
     DepartmentUpdate,
+    Employee,
+    EmployeeCreate,
     ErrorResponse,
     HealthResponse,
 )
-from .repository import DepartmentRepository
+from .repository import (
+    DepartmentRepository,
+    DuplicateEmployeeEmailError,
+    EmployeeRepository,
+)
 
 
 health_router = APIRouter(tags=["Состояние"])
 departments_router = APIRouter(prefix="/api/departments", tags=["Отделы"])
-
 DepartmentId = Annotated[int, Path(gt=0, description="Положительный идентификатор отдела")]
 NOT_FOUND = {"error": "Отдел не найден", "field": "id"}
 
 
 def repository(request: Request) -> DepartmentRepository:
     return request.app.state.departments
+
+
+def employee_repository(request: Request) -> EmployeeRepository:
+    return request.app.state.employees
 
 
 def require_department(department: Department | None) -> Department:
@@ -54,6 +64,53 @@ def list_departments(
     filters: Annotated[DepartmentFilter, Query()],
 ) -> list[Department]:
     return repository(request).find_all(filters)
+
+
+@departments_router.get(
+    "/stats", response_model=list[DepartmentStats], summary="Статистика по отделам"
+)
+def departments_stats(request: Request) -> list[DepartmentStats]:
+    return repository(request).stats()
+
+
+@departments_router.post(
+    "/{department_id}/employees",
+    response_model=Employee,
+    status_code=status.HTTP_201_CREATED,
+    summary="Добавить сотрудника в отдел",
+    responses={
+        404: {"model": ErrorResponse, "description": "Отдел не найден"},
+        409: {"model": ErrorResponse, "description": "Email сотрудника уже занят"},
+    },
+)
+def create_employee(
+    department_id: DepartmentId,
+    data: EmployeeCreate,
+    request: Request,
+) -> Employee:
+    try:
+        employee = employee_repository(request).create(department_id, data)
+    except DuplicateEmployeeEmailError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "Email уже используется другим сотрудником", "field": "email"},
+        ) from None
+    if employee is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NOT_FOUND)
+    return employee
+
+
+@departments_router.get(
+    "/{department_id}/employees",
+    response_model=list[Employee],
+    summary="Сотрудники отдела",
+    responses={404: {"model": ErrorResponse, "description": "Отдел не найден"}},
+)
+def list_employees(department_id: DepartmentId, request: Request) -> list[Employee]:
+    employees = employee_repository(request).find_all(department_id)
+    if employees is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NOT_FOUND)
+    return employees
 
 
 @departments_router.get(

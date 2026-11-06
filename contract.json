@@ -43,5 +43,48 @@
     "param": "manager",
     "value": "Анна Смирнова",
     "other": "Другой руководитель"
-  }
+  },
+  "text_field": "name",
+  "child": {
+    "resource": "employees",
+    "create": {
+      "full_name": "Иван Иванов",
+      "position": "Разработчик",
+      "email": "ivan@example.com",
+      "salary": 90000
+    },
+    "parent_field": "department_id"
+  },
+  "search": {
+    "param": "q",
+    "field": "name"
+  },
+  "rule": {
+    "description": "Email сотрудника должен быть уникальным во всей компании (без учёта регистра)",
+    "parent": {},
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/departments/{id}/employees",
+        "body": {
+          "full_name": "Иван Иванов",
+          "position": "Разработчик",
+          "email": "unique@example.com",
+          "salary": 90000
+        }
+      }
+    ],
+    "violate": {
+      "method": "POST",
+      "path": "/api/departments/{id}/employees",
+      "body": {
+        "full_name": "Пётр Петров",
+        "position": "Тестировщик",
+        "email": "UNIQUE@example.com",
+        "salary": 85000
+      }
+    },
+    "expect_status": 409
+  },
+  "stats_path": "/api/departments/stats"
 }

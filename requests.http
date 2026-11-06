@@ -1,13 +1,12 @@
-# Запросы для демонстрации лабораторной 1.
-# В VS Code нужно расширение REST Client; в JetBrains IDE поддержка .http встроена.
-# Над каждым запросом появляется ссылка «Send Request».
+# Запросы для демонстрации лабораторной 2.
+# В VS Code используется расширение REST Client; в JetBrains IDE есть поддержка .http.
 
 @base = http://localhost:8000
 
-### 1. Сервис жив? Ожидается 200 и {"status":"ok"}
+### 1. Проверить сервис (200)
 GET {{base}}/health
 
-### 2. Создать отдел. Ожидается 201 и объект с id
+### 2. Создать отдел (201)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -17,7 +16,7 @@ Content-Type: application/json
   "status": "active"
 }
 
-### 3. Создать второй отдел
+### 3. Создать другой отдел (201)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -27,25 +26,25 @@ Content-Type: application/json
   "status": "inactive"
 }
 
-### 4. Получить список. Ожидается 200
+### 4. Список отделов (200)
 GET {{base}}/api/departments
 
-### 5. Пагинация
+### 5. Пагинация (200)
 GET {{base}}/api/departments?limit=1&offset=0
 
-### 6. Фильтр по руководителю
+### 6. Фильтр по руководителю (200)
 GET {{base}}/api/departments?manager=Анна%20Смирнова
 
-### 7. Фильтр по статусу
+### 7. Фильтр по статусу (200)
 GET {{base}}/api/departments?status=active
 
-### 8. Получить отдел с id=1
+### 8. Получить отдел (200, если id=1 существует)
 GET {{base}}/api/departments/1
 
-### 9. Несуществующий id. Ожидается 404
+### 9. Неизвестный отдел (404)
 GET {{base}}/api/departments/999999
 
-### 10. Изменить отдел. Ожидается 200
+### 10. Изменить отдел (200)
 PATCH {{base}}/api/departments/1
 Content-Type: application/json
 
@@ -53,7 +52,45 @@ Content-Type: application/json
   "manager": "Иван Петров"
 }
 
-### 11. Пустое обязательное поле. Ожидается 400 и field=name
+### 11. Создать сотрудника отдела 1 (201)
+POST {{base}}/api/departments/1/employees
+Content-Type: application/json
+
+{
+  "full_name": "Иван Иванов",
+  "position": "Разработчик",
+  "email": "ivan@example.com",
+  "salary": 90000
+}
+
+### 12. Получить сотрудников отдела (200, список)
+GET {{base}}/api/departments/1/employees
+
+### 13. Создать сотрудника несуществующего отдела (404)
+POST {{base}}/api/departments/999999/employees
+Content-Type: application/json
+
+{
+  "full_name": "Пётр Петров",
+  "position": "Аналитик",
+  "email": "petr@example.com",
+  "salary": 70000
+}
+
+### 14. Проверка защиты от SQL-инъекции (201)
+POST {{base}}/api/departments
+Content-Type: application/json
+
+{
+  "name": "'); DROP TABLE departments;--",
+  "manager": "Анна Смирнова",
+  "status": "active"
+}
+
+### 15. Проверка, что таблица сохранилась (200)
+GET {{base}}/api/departments
+
+### 16. Пустое название (400, field=name)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -63,7 +100,7 @@ Content-Type: application/json
   "status": "active"
 }
 
-### 12. Обязательное поле name отсутствует. Ожидается 400 и field=name
+### 17. Нет обязательного поля name (400, field=name)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -72,7 +109,7 @@ Content-Type: application/json
   "status": "active"
 }
 
-### 13. Пустой manager. Ожидается 400 и field=manager
+### 18. Пустой manager (400, field=manager)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -82,7 +119,7 @@ Content-Type: application/json
   "status": "active"
 }
 
-### 14. Неверный status. Ожидается 400 и field=status
+### 19. Некорректный status (400, field=status)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -92,7 +129,7 @@ Content-Type: application/json
   "status": "wrong"
 }
 
-### 15. Сломанный JSON. Ожидается 400
+### 20. Сломанный JSON (400)
 POST {{base}}/api/departments
 Content-Type: application/json
 
@@ -100,8 +137,39 @@ Content-Type: application/json
   "name": "Продажи",
   "manager": "Олег Орлов",
 
-### 16. Удалить отдел. Ожидается 204 без тела
+### 21. Удалить отдел 1 (204; сотрудников тоже удалит)
 DELETE {{base}}/api/departments/1
 
-### 17. После удаления запись не существует. Ожидается 404
+### 22. После удаления отдел не существует (404)
 GET {{base}}/api/departments/1
+
+### 23. ★ Поиск по названию (без учёта регистра, включая кириллицу)
+GET {{base}}/api/departments?q=РАЗРАБ
+
+### 24. ★ Поиск с дополнительным фильтром
+GET {{base}}/api/departments?q=раз&status=active
+
+### 25. ★★ Уникальный email: первый сотрудник (201)
+POST {{base}}/api/departments/1/employees
+Content-Type: application/json
+
+{
+  "full_name": "Первый Сотрудник",
+  "position": "Инженер",
+  "email": "unique@example.com",
+  "salary": 100000
+}
+
+### 26. ★★ Повтор email с другим регистром (409, field=email)
+POST {{base}}/api/departments/1/employees
+Content-Type: application/json
+
+{
+  "full_name": "Второй Сотрудник",
+  "position": "Инженер",
+  "email": "UNIQUE@example.com",
+  "salary": 105000
+}
+
+### 27. ★★ Статистика отделов (200, включая пустые отделы)
+GET {{base}}/api/departments/stats

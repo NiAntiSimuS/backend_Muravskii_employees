@@ -20,7 +20,6 @@ DepartmentStatus = Literal["active", "inactive"]
 
 class StrictModel(BaseModel):
     """Базовая модель: неизвестные поля в JSON считаются ошибкой."""
-
     model_config = ConfigDict(extra="forbid")
 
 
@@ -51,7 +50,6 @@ class DepartmentUpdate(StrictModel):
 
 class Department(DepartmentCreate):
     model_config = ConfigDict(extra="forbid", frozen=True)
-
     id: int = Field(gt=0, description="Идентификатор, назначенный сервером")
 
 
@@ -59,7 +57,29 @@ class DepartmentFilter(StrictModel):
     limit: int = Field(default=10, ge=1, le=100, description="Размер страницы")
     offset: int = Field(default=0, ge=0, description="Количество пропускаемых записей")
     manager: TextField | None = Field(default=None, description="Точное имя руководителя")
+    q: TextField | None = Field(default=None, description="Поиск по названию без учёта регистра")
     status: DepartmentStatus | None = Field(default=None, description="Фильтр по статусу")
+
+
+class EmployeeCreate(StrictModel):
+    full_name: TextField = Field(description="ФИО сотрудника", examples=["Иван Иванов"])
+    position: TextField = Field(description="Должность", examples=["Разработчик"])
+    email: TextField = Field(description="Email сотрудника", examples=["ivan@example.com"])
+    salary: float = Field(ge=0, allow_inf_nan=False, description="Зарплата")
+
+
+class Employee(EmployeeCreate):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    id: int = Field(gt=0, description="Идентификатор сотрудника")
+    department_id: int = Field(gt=0, description="ID отдела (внешний ключ)")
+
+
+class DepartmentStats(StrictModel):
+    department_id: int = Field(gt=0, description="ID отдела")
+    department_name: str = Field(description="Название отдела")
+    employee_count: int = Field(ge=0, description="Число сотрудников")
+    total_salary: float = Field(ge=0, description="Сумма зарплат")
+    avg_salary: float = Field(ge=0, description="Средняя зарплата")
 
 
 class ErrorResponse(BaseModel):

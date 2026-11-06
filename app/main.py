@@ -7,14 +7,13 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .database import Database
 from .models import ErrorResponse
-from .repository import DepartmentRepository
+from .repository import DepartmentRepository, EmployeeRepository
 from .routes import departments_router, health_router
-
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("departments.requests")
-
 
 VALIDATION_MESSAGES = {
     "missing": "Обязательное поле отсутствует",
@@ -35,7 +34,6 @@ VALIDATION_MESSAGES = {
 def validation_message(error: dict) -> str:
     error_type = error["type"]
     context = error.get("ctx", {})
-
     if error_type == "string_too_long":
         return f"Максимальная длина: {context.get('max_length')} символов"
     if error_type == "greater_than":
@@ -44,22 +42,22 @@ def validation_message(error: dict) -> str:
         return f"Значение должно быть не меньше {context.get('ge')}"
     if error_type == "less_than_equal":
         return f"Значение должно быть не больше {context.get('le')}"
-
     return VALIDATION_MESSAGES.get(error_type, "Некорректное значение")
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Справочник сотрудников — лабораторная 1",
-        version="1.0.0",
+        title="Справочник сотрудников — лабораторная 2",
+        version="2.0.0",
         description=(
-            "CRUD главной сущности «Отдел». Данные хранятся в памяти одного процесса. "
-            "Статусы: active — активный отдел, inactive — неактивный."
+            "Отделы и сотрудники хранятся в SQLite между перезапусками. "
+            "Статусы отделов: active — активный, inactive — неактивный."
         ),
         responses={400: {"model": ErrorResponse, "description": "Ошибка валидации"}},
     )
-
-    app.state.departments = DepartmentRepository()
+    database = Database()
+    app.state.departments = DepartmentRepository(database)
+    app.state.employees = EmployeeRepository(database)
     app.include_router(health_router)
     app.include_router(departments_router)
 
@@ -89,10 +87,8 @@ def create_app() -> FastAPI:
         location = error.get("loc", ())
         field_parts = [part for part in location if part not in ("body", "query", "path")]
         field = str(field_parts[0]) if field_parts else "body"
-
         if error["type"] == "json_invalid":
             field = "body"
-
         return JSONResponse(
             status_code=400,
             content={"error": validation_message(error), "field": field},
