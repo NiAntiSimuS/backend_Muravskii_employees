@@ -50,10 +50,16 @@
     "create": {
       "full_name": "Иван Иванов",
       "position": "Разработчик",
-      "email": "ivan@example.com",
+      "email": "bc-child-first@example.test",
       "salary": 90000
     },
-    "parent_field": "department_id"
+    "parent_field": "department_id",
+    "create_other": {
+      "full_name": "Мария Соколова",
+      "position": "Тестировщик",
+      "email": "bc-child-second@example.test",
+      "salary": 82000
+    }
   },
   "search": {
     "param": "q",
@@ -69,7 +75,7 @@
         "body": {
           "full_name": "Иван Иванов",
           "position": "Разработчик",
-          "email": "unique@example.com",
+          "email": "bc-rule-check@example.test",
           "salary": 90000
         }
       }
@@ -80,7 +86,7 @@
       "body": {
         "full_name": "Пётр Петров",
         "position": "Тестировщик",
-        "email": "UNIQUE@example.com",
+        "email": "BC-RULE-CHECK@EXAMPLE.TEST",
         "salary": 85000
       }
     },

@@ -1,3 +1,0 @@
-# SQLite — файл создаётся автоматически при первом запуске.
-# Можно изменить путь, например: sqlite:////tmp/my-employees.db
-DATABASE_URL=sqlite:///./employees.db
